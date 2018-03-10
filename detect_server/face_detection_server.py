@@ -52,7 +52,6 @@ def load_align_img(img, image_size, margin, gpu_memory_fraction):
         bbs.append(bb.tolist())
         cropped = img[bb[1]:bb[3],bb[0]:bb[2],:]
         print(cropped.shape)
-        cv2.imwrite('./cropped_img.jpg', cropped)
         # aligned = misc.imresize(cropped, (image_size, image_size), interp='bilinear')
         # normalized = normalize(aligned)
         # img_list.append(normalized)
@@ -66,16 +65,22 @@ def decode_img(content):
     img_array = np.asarray(bytearray(content), dtype=np.uint8)
     return cv2.imdecode(img_array, cv2.IMREAD_COLOR)
 
-async def func(request):
+async def process_file(request):
     data = await request.post()
     img_file = data['image'].file
     img = decode_img(img_file.read())
     bounding_boxes = load_align_img(img, 160, 44, 0.3)
     return web.json_response({'bounding_boxes': bounding_boxes})
 
+async def process_array(request):
+    data = await request.post()
+    img_file = data['image']
+    img = decode_img(img_file)
+
 def run_server():
     app = web.Application()
-    app.router.add_post('/', func)
+    app.router.add_post('/file', process_file)
+    app.router.add_post('/array', process_array)
     web.run_app(app)
 
 if __name__ == '__main__':

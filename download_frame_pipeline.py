@@ -7,6 +7,8 @@ import re
 import os
 from tempfile import NamedTemporaryFile
 import cv2
+from server_config import detect_server, gender_server
+import os
 
 console = logging.StreamHandler()
 console.setLevel(logging.INFO)
@@ -37,6 +39,20 @@ def download_video(v_src, temp_file):
     except requests.exceptions.SSLError:
         return None
 
+def detect_face(frame):
+    ntf = NamedTemporaryFile(suffix='.jpg')
+    cv2.imwrite(ntf.name, frame)
+    r = requests.post(detect_server, files={'image': open(ntf.name, 'rb')})
+    ntf.close()
+    return json.loads(r.text)['bounding_boxes']
+
+def query_gender(bb, frame):
+    ntf = NamedTemporaryFile(suffix='.jpg')
+    cv2.imwrite(ntf.name, frame[ bb[1]:bb[3], bb[0]:bb[2], : ])
+    r = requests.post(gender_server, files={'image': open(ntf.name, 'rb')})
+    ntf.close()
+    return json.loads(r.text)['gender']
+
 def extract_frame(v_file, frame_interval, seg):
     v_file.seek(0)
     video = cv2.VideoCapture(v_file.name)
@@ -46,21 +62,31 @@ def extract_frame(v_file, frame_interval, seg):
         ret, frame = video.read()
         if ret:
             if cnt % frame_interval == 0:
-                frames.append(frame)
-                cv2.imwrite('./frame/{}/{}.jpg'.format(seg, cnt), frame)
+                bbs = detect_face(frame)
+                if not all(bbs):
+                    continue
+                for bb in bbs:
+                    gender = query_gender(bb, frame)
+                    if gender is 0:
+                        cv2.imwrite('./thumbnails/{}_{}.jpg'.format(seg, cnt), frame[ bb[1]:bb[3], bb[0]:bb[2], :])
+            cnt = cnt + 1
+        else:
+            break
     return frames
 
 def get_video(v_code):
-    seg = 1
+    seg = 8
     while True:
         video_src = "https://condombaby.com/{v_code:s}/1080p/{seg:05d}.ts".format(v_code=v_code, seg=seg)
+        print("start to process {} segment.".format(seg))
         ntf = NamedTemporaryFile()
         ntf = download_video(video_src, ntf)
-        extract_frame(ntf, 10, seg)
+        thumbnails = extract_frame(ntf, 10, seg)
+        if os.path.getsize(ntf.name) < 80000:
+            print("video processing complete")
+            ntf.close()
+            break
         ntf.close()
-        if not ntf:
-            print("the last segment is {}".format(seg))
-        break
         seg = seg+1
 
 

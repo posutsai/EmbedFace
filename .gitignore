@@ -1,0 +1,6 @@
+detect_server/model
+filter_server/__pycache__
+filter_server/trained_models
+detect_server/__pycache__
+__pycache__
+thumbnails

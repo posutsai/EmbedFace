@@ -15,7 +15,7 @@ def upload():
         image = request.files['image'].read()
         res = eg_processor.process_cropped_image(image)
         # return send_file('./result/predicted_image.png', mimetype='image/png')
-        return jsonify(res[2])
+        return jsonify({'gender': res[1].item()})
     except Exception as err:
         logging.error('An error has occurred whilst processing the file: "{0}"'.format(err))
         abort(400)
