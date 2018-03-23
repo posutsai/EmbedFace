@@ -8,7 +8,9 @@ import os
 from tempfile import NamedTemporaryFile
 import cv2
 from server_config import detect_server, gender_server
+from star_config import porn_star_video_list
 import os
+import argparse
 
 console = logging.StreamHandler()
 console.setLevel(logging.INFO)
@@ -16,6 +18,11 @@ formatter = logging.Formatter('%(name)-20s: %(levelname)-8s %(message)s')
 logging.getLogger('').addHandler(console)
 
 AVGLE_SEARCH_VIDEOS_API_URL = 'https://api.avgle.com/v1/search/{}/0'
+
+parser = argparse.ArgumentParser()
+parser.add_argument('--image_size', type=int,
+    help='Image size (height, width) in pixels.', default=182)
+args = parser.parse_args()
 
 def get_video_list(name):
     name_logger = logging.getLogger('FaceSearch.video_list')
@@ -53,7 +60,11 @@ def query_gender(bb, frame):
     ntf.close()
     return json.loads(r.text)['gender']
 
-def extract_frame(v_file, frame_interval, seg):
+def check_dir(dir):
+    if not os.path.exists(dir):
+            os.makedirs(dir)
+
+def extract_frame(v_file, frame_interval, seg, name, n_img):
     v_file.seek(0)
     video = cv2.VideoCapture(v_file.name)
     cnt = 0
@@ -68,31 +79,47 @@ def extract_frame(v_file, frame_interval, seg):
                 for bb in bbs:
                     gender = query_gender(bb, frame)
                     if gender is 0:
-                        cv2.imwrite('./thumbnails/{}_{}.jpg'.format(seg, cnt), frame[ bb[1]:bb[3], bb[0]:bb[2], :])
+                        cropped = frame[ bb[1]:bb[3], bb[0]:bb[2], :]
+                        scaled = cv2.resize(cropped, (args.image_size, args.image_size))
+                        cv2.imwrite('./cropped/{name:s}/{name:s}_{n_img:04d}.jpg'.format(name=name, n_img=n_img), scaled)
+                        n_img = n_img + 1
             cnt = cnt + 1
         else:
             break
-    return frames
+    video.release()
+    return n_img
 
-def get_video(v_code):
-    seg = 8
+def get_video(v_code, name):
+    seg = 1
+    n_img = 1
+    check_dir("./cropped/{}".format(name))
+    repeat = 1
     while True:
-        video_src = "https://condombaby.com/{v_code:s}/1080p/{seg:05d}.ts".format(v_code=v_code, seg=seg)
+        video_src = "https://condombaby.com/{v_code:s}/720p/{seg:05d}.ts".format(v_code=v_code, seg=seg)
         print("start to process {} segment.".format(seg))
+        print(video_src)
         ntf = NamedTemporaryFile()
         ntf = download_video(video_src, ntf)
-        thumbnails = extract_frame(ntf, 10, seg)
         if os.path.getsize(ntf.name) < 80000:
-            print("video processing complete")
-            ntf.close()
-            break
+            print('{} download {} failed'.format(name, video_src))
+            if seg > 500:
+                print("video processing complete")
+                print("size is {}".format(os.path.getsize(ntf.name)))
+                ntf.close()
+                break
+            else:
+                if repeat < 10:
+                    ntf.close()
+                    continue
+                else:
+                    ntf.close()
+                    seg = seg+5
+        n_img = extract_frame(ntf, 10, seg, name, n_img)
         ntf.close()
-        seg = seg+1
+        seg = seg+5
 
 
 if __name__ == '__main__':
-    with open('porn_star.json') as jsonfile:
-        star2video = json.load(jsonfile)
-    for name, videos in star2video.items():
+    for name, videos in porn_star_video_list.items():
         for v in videos:
-            get_video(v)
+            get_video(v, name)

@@ -4,3 +4,5 @@ filter_server/trained_models
 detect_server/__pycache__
 __pycache__
 thumbnails
+cropped
+embed_server/model
